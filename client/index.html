@@ -134,8 +134,12 @@
         <div id="status-dot" class="status-dot"></div>
         <div class="peer-title">
           <h2 id="partner-name">Private Endpoint</h2>
-          <div id="crypto-badge" class="crypto-badge">
-            <span id="badge-icon">⚠️</span> <span id="badge-text">Unverified Keys</span>
+          <div class="status-row">
+            <span id="partner-status-text" class="status-text offline">Offline</span>
+            <span class="status-separator">•</span>
+            <div id="crypto-badge" class="crypto-badge">
+              <span id="badge-icon">⚠️</span> <span id="badge-text">Unverified</span>
+            </div>
           </div>
         </div>
       </div>
@@ -153,6 +157,14 @@
         🛡️ Zero-Knowledge Relay: The server cannot read messages or decrypt media. Data is strictly ephemeral in memory.
       </div>
     </main>
+
+    <!-- Ephemeral Typing Indicator Bubble -->
+    <div id="typing-indicator" class="typing-indicator-bar hidden">
+      <span class="typing-text">Partner is typing</span>
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
 
     <!-- Chat Input Controls -->
     <footer id="chat-input-container">

@@ -37,9 +37,11 @@ const btnCamouflage = document.getElementById('btn-camouflage');
 // DOM Elements - Chat Vault
 const statusDot = document.getElementById('status-dot');
 const partnerName = document.getElementById('partner-name');
+const partnerStatusText = document.getElementById('partner-status-text');
 const cryptoBadge = document.getElementById('crypto-badge');
 const badgeIcon = document.getElementById('badge-icon');
 const badgeText = document.getElementById('badge-text');
+const typingIndicator = document.getElementById('typing-indicator');
 const chatMessages = document.getElementById('chat-messages');
 const messageInput = document.getElementById('message-input');
 const btnSend = document.getElementById('btn-send');
@@ -270,7 +272,12 @@ async function handleIncomingPacket(packet) {
       break;
 
     case 'e2ee:message':
+      hideTypingIndicator();
       await handleIncomingEncryptedMessage(packet);
+      break;
+
+    case 'e2ee:typing':
+      handleIncomingTyping(packet);
       break;
 
     case 'system:undelivered':
@@ -397,13 +404,57 @@ function sendPacket(data) {
   }
 }
 
+let typingTimeout = null;
+let peerTypingTimeout = null;
+
 function setPartnerStatus(online) {
   isPartnerOnline = online;
   if (online) {
     statusDot.classList.add('online');
+    if (partnerStatusText) {
+      partnerStatusText.textContent = 'In Chat';
+      partnerStatusText.className = 'status-text online';
+    }
   } else {
     statusDot.classList.remove('online');
+    if (partnerStatusText) {
+      partnerStatusText.textContent = 'Offline';
+      partnerStatusText.className = 'status-text offline';
+    }
+    hideTypingIndicator();
   }
+}
+
+function handleIncomingTyping(packet) {
+  if (!typingIndicator) return;
+
+  if (packet.isTyping) {
+    typingIndicator.classList.remove('hidden');
+    // Auto-clear typing indicator after 3.5s of inactivity
+    clearTimeout(peerTypingTimeout);
+    peerTypingTimeout = setTimeout(() => {
+      typingIndicator.classList.add('hidden');
+    }, 3500);
+  } else {
+    hideTypingIndicator();
+  }
+}
+
+function hideTypingIndicator() {
+  clearTimeout(peerTypingTimeout);
+  if (typingIndicator) {
+    typingIndicator.classList.add('hidden');
+  }
+}
+
+function emitTypingStatus(isTyping) {
+  if (!socket || socket.readyState !== WebSocket.OPEN || !isPartnerOnline) return;
+
+  sendPacket({
+    type: 'e2ee:typing',
+    isTyping: isTyping,
+    timestamp: Date.now(),
+  });
 }
 
 function updateCryptoBadge() {
@@ -515,9 +566,30 @@ btnPanic.addEventListener('click', async () => {
   }
 });
 
-btnSend.addEventListener('click', sendMessage);
+btnSend.addEventListener('click', () => {
+  emitTypingStatus(false);
+  sendMessage();
+});
+
 messageInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') sendMessage();
+  if (e.key === 'Enter') {
+    emitTypingStatus(false);
+    sendMessage();
+  }
+});
+
+// Typing event detection with 2.5s debounce
+messageInput.addEventListener('input', () => {
+  const hasText = messageInput.value.trim().length > 0;
+  if (hasText) {
+    emitTypingStatus(true);
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      emitTypingStatus(false);
+    }, 2500);
+  } else {
+    emitTypingStatus(false);
+  }
 });
 
 btnAttach.addEventListener('click', () => fileInput.click());

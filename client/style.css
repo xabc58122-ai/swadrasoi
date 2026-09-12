@@ -81,16 +81,85 @@ header {
   letter-spacing: 0.3px;
 }
 
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.status-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-red);
+  transition: color 0.3s;
+}
+
+.status-text.online {
+  color: var(--accent-green);
+}
+
+.status-separator {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
 .peer-title .crypto-badge {
   font-size: 11px;
   color: var(--accent-amber);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .crypto-badge.verified {
   color: var(--accent-green);
+}
+
+/* Ephemeral Typing Indicator Bar */
+.typing-indicator-bar {
+  padding: 6px 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--accent-blue);
+  background: rgba(19, 27, 46, 0.9);
+  border-top: 1px solid rgba(36, 50, 86, 0.4);
+}
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.typing-dots span {
+  width: 5px;
+  height: 5px;
+  background-color: var(--accent-blue);
+  border-radius: 50%;
+  display: inline-block;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .header-actions {
