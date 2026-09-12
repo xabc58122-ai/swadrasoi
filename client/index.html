@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#b91c1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>SwadRasoi - Authentic Indian Recipes</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="recipe.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 1. CAMOUFLAGE / DISGUISE VIEW: Authentic Indian Recipe Blog -->
+  <div id="camouflage-view">
+    <!-- Blog Navigation -->
+    <nav class="recipe-nav">
+      <div class="brand">
+        <span class="brand-icon">🍛</span>
+        <span class="brand-title">Swad<span class="accent-title">Rasoi</span></span>
+      </div>
+      <div class="nav-right">
+        <!-- Secret trigger hidden directly in search bar -->
+        <div class="search-box">
+          <input type="text" id="recipe-search" placeholder="Search recipe or spices..." autocomplete="off">
+          <button id="btn-search" class="search-btn">🔍</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Recipe Content -->
+    <main class="recipe-container">
+      <header class="recipe-header">
+        <span class="category-tag">Royal Mughlai Cuisine</span>
+        <h1 class="recipe-title">Authentic Dhaba-Style Paneer Butter Masala</h1>
+        <div class="recipe-meta">
+          <span>⏱️ Prep: 15 mins</span>
+          <span>🔥 Cook: 25 mins</span>
+          <span>👥 Serves: 4</span>
+          <span>🌶️ Spice: Medium</span>
+        </div>
+
+        <!-- Big Prominent Recipe Search Bar -->
+        <div class="main-recipe-search-box">
+          <span class="search-icon-big">🔍</span>
+          <input type="text" id="recipe-search-main" placeholder="Search traditional recipes or secret ingredients..." autocomplete="off">
+          <button id="btn-search-main" class="main-search-btn">Search Recipe</button>
+        </div>
+      </header>
+
+      <div class="recipe-banner">
+        <div class="banner-placeholder">
+          <span class="dish-emoji">🥘</span>
+          <p>Rich, creamy tomato gravy with slow-roasted aromatic spices & velvety cottage cheese.</p>
+        </div>
+      </div>
+
+      <div class="recipe-grid">
+        <!-- Ingredients List -->
+        <section class="recipe-card ingredients-card">
+          <h2>🌿 Essential Ingredients</h2>
+          <ul class="ingredient-list">
+            <li><strong>400g</strong> Fresh Malai Paneer (cubed)</li>
+            <li><strong>4 large</strong> Vine-ripened Tomatoes (pureed)</li>
+            <li><strong>2 tbsp</strong> Pure Desi Ghee & Salted Butter</li>
+            <li><strong>12-15</strong> Whole Cashews (soaked & ground)</li>
+            <li><strong>1 tsp</strong> Kashmiri Red Chilli Powder</li>
+            <li><strong>1 tbsp</strong> Kasuri Methi (crushed)</li>
+            <li><strong>2</strong> Green Cardamoms & 1 Bay Leaf</li>
+            <li><strong>1/2 cup</strong> Fresh Dairy Cream</li>
+          </ul>
+        </section>
+
+        <!-- Step-by-Step Cooking Guide -->
+        <section class="recipe-card instructions-card">
+          <h2>👨‍🍳 Step-by-Step Method</h2>
+          <ol class="steps-list">
+            <li>
+              <strong>Aromatic Base:</strong> Heat 2 tbsp ghee in a heavy-bottomed kadai. Crackle whole green cardamoms and bay leaf until fragrant.
+            </li>
+            <li>
+              <strong>Tomato Gravy:</strong> Add the fresh tomato puree, ginger-garlic paste, turmeric, and Kashmiri red chilli. Cook on medium flame until oil separates (approx. 8-10 mins).
+            </li>
+            <li>
+              <strong>Cashew Silk:</strong> Whisk in the smooth cashew paste with 1/2 cup warm water. Simmer on low heat until velvety and thick.
+            </li>
+            <li>
+              <strong>Paneer Addition:</strong> Gently fold in the fresh paneer cubes. Simmer for 3 minutes without overcooking to keep paneer tender.
+            </li>
+            <li>
+              <strong>Finishing Touch:</strong> Finish with crushed kasuri methi, garam masala, and fresh cream. Serve hot with garlic butter naan or jeera rice.
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      <!-- Quick Cook Tips -->
+      <section class="recipe-card tips-card">
+        <h3>💡 Chef's Secret Tip</h3>
+        <p>Always soak store-bought paneer in warm salted water for 10 minutes before adding to the gravy to keep it exceptionally soft and succulent.</p>
+      </section>
+
+      <!-- Footer with subtle discrete unlock trigger -->
+      <footer class="recipe-footer">
+        <p>© 2026 SwadRasoi Traditional Kitchens. All rights reserved.</p>
+        <p class="copyright-secret" id="secret-footer-trigger">Made with ❤️ for Indian Food Lovers</p>
+      </footer>
+    </main>
+
+    <!-- Secret PIN Modal (Triggered by 5 taps or search query) -->
+    <div id="pin-modal" class="modal-overlay hidden">
+      <div class="modal-content pin-card">
+        <h3 id="pin-title">Recipe Notes Access</h3>
+        <p>Enter passkey to open saved recipe collection:</p>
+        <div class="pin-input-group">
+          <input type="password" id="secret-pin-input" placeholder="Passkey" maxlength="20" autocomplete="off">
+          <button id="btn-submit-pin" class="btn-primary">Unlock</button>
+        </div>
+        <p id="pin-error" class="pin-error-text hidden">Invalid key.</p>
+        <div class="modal-buttons" style="margin-top: 15px;">
+          <button id="btn-cancel-pin" class="btn-secondary" style="width: 100%;">Return to Recipe</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ZERO-KNOWLEDGE E2EE PRIVATE VAULT (Completely Hidden by Default) -->
+  <div id="app-container" class="hidden">
+    <!-- Header -->
+    <header>
+      <div class="peer-info">
+        <div id="status-dot" class="status-dot"></div>
+        <div class="peer-title">
+          <h2 id="partner-name">Private Endpoint</h2>
+          <div id="crypto-badge" class="crypto-badge">
+            <span id="badge-icon">⚠️</span> <span id="badge-text">Unverified Keys</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <!-- Disguise / Return to Recipe Button -->
+        <button id="btn-camouflage" class="btn-icon" title="Instant Camouflage: Back to Recipes">🍛</button>
+        <button id="btn-verify" class="btn-icon" title="Verify Safety Fingerprint">🔐</button>
+        <button id="btn-panic" class="btn-icon btn-panic" title="Panic: Wipe Local Keys & History">⚡</button>
+      </div>
+    </header>
+
+    <!-- Chat Messages Stream -->
+    <main id="chat-messages">
+      <div class="system-msg">
+        🛡️ Zero-Knowledge Relay: The server cannot read messages or decrypt media. Data is strictly ephemeral in memory.
+      </div>
+    </main>
+
+    <!-- Chat Input Controls -->
+    <footer id="chat-input-container">
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+      <button id="btn-attach" class="btn-icon" title="Send Encrypted Image">📷</button>
+      <input type="text" id="message-input" placeholder="Encrypted message..." autocomplete="off">
+      <button id="btn-send" class="btn-send" title="Send">➤</button>
+    </footer>
+
+    <!-- Out-of-band Verification Modal -->
+    <div id="verify-modal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <h3>🔐 Safety Fingerprint</h3>
+        <p>Compare these numbers with your partner in person or over another secure line. If they match, your connection is cryptographically immune to interception.</p>
+        <div id="fingerprint-display" class="fingerprint-box">Calculating...</div>
+        <div class="modal-buttons">
+          <button id="btn-mark-verified" class="btn-primary">Mark as Verified</button>
+          <button id="btn-close-verify" class="btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ephemeral Fullscreen Viewer -->
+    <div id="image-viewer-modal" class="hidden">
+      <div class="viewer-topbar">
+        <button id="btn-close-viewer" class="btn-icon" style="font-size: 18px;">✕</button>
+      </div>
+      <img id="fullscreen-image" src="" alt="Encrypted Ephemeral Media">
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

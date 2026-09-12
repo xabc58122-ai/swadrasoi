@@ -1,0 +1,11 @@
+﻿{
+  "name": "zero-knowledge-relay",
+  "version": "1.0.0",
+  "description": "Ultra-secure zero-knowledge memory-only WebSocket relay for 2 users",
+  "type": "module",
+  "main": "server.js",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.7"
+  }
+}

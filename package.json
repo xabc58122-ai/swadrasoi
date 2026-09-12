@@ -1,0 +1,14 @@
+﻿{
+  "name": "swad-rasoi-vault",
+  "version": "1.0.0",
+  "description": "SwadRasoi - Authentic Indian Recipes & Zero-Knowledge E2EE Relay",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "ws": "^8.18.0"
+  }
+}
