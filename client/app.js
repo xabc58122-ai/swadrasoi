@@ -554,15 +554,34 @@ btnMarkVerified.addEventListener('click', async () => {
   appendSystemMessage('✅ Safety fingerprint verified.');
 });
 
+// Instant Panic Button (Zero-delay emergency wipe & camouflage)
 btnPanic.addEventListener('click', async () => {
-  const confirmNuke = confirm('🚨 PANIC ACTION: Permanently wipe all private keys, message history, and local credentials?');
-  if (confirmNuke) {
-    if (socket) socket.close();
+  // 1. Immediately kill WebSocket connection
+  if (socket) {
+    try {
+      socket.close();
+    } catch (_) {}
+  }
+
+  // 2. Clear volatile memory in DOM
+  chatMessages.innerHTML = '';
+  sharedAesKey = null;
+  myKeyPair = null;
+  peerPublicKey = null;
+
+  // 3. Flip screen back to recipe camouflage instantly (sub-millisecond)
+  showCamouflage();
+
+  // 4. Wipe local IndexedDB keys & session storage in background
+  try {
     await LocalKeyStore.wipeAllData();
-    sessionStorage.clear();
-    localStorage.clear();
-    alert('All local keys wiped.');
-    window.location.reload();
+  } catch (_) {}
+  sessionStorage.clear();
+  localStorage.clear();
+
+  // 5. Clean URL query parameters so no token remains in address bar
+  if (window.history.replaceState) {
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 });
 
