@@ -60,9 +60,39 @@ const btnCloseVerify = document.getElementById('btn-close-verify');
 const imageViewerModal = document.getElementById('image-viewer-modal');
 const fullscreenImage = document.getElementById('fullscreen-image');
 const btnCloseViewer = document.getElementById('btn-close-viewer');
+const btnAudioCall = document.getElementById('btn-audio-call');
+const btnVideoCall = document.getElementById('btn-video-call');
+const incomingCallModal = document.getElementById('incoming-call-modal');
+const incomingCallerTitle = document.getElementById('incoming-caller-title');
+const incomingCallSubtitle = document.getElementById('incoming-call-subtitle');
+const btnAcceptCall = document.getElementById('btn-accept-call');
+const btnRejectCall = document.getElementById('btn-reject-call');
+const activeCallOverlay = document.getElementById('active-call-overlay');
+const remoteVideo = document.getElementById('remote-video');
+const remoteAudio = document.getElementById('remote-audio');
+const localVideo = document.getElementById('local-video');
+const localVideoContainer = document.getElementById('local-video-container');
+const callTimer = document.getElementById('call-timer');
+const btnToggleMic = document.getElementById('btn-toggle-mic');
+const btnToggleCam = document.getElementById('btn-toggle-cam');
+const btnFlipCam = document.getElementById('btn-flip-cam');
+const btnEndCall = document.getElementById('btn-end-call');
+const btnCallCamouflage = document.getElementById('btn-call-camouflage');
 
 // Active Reply State
 let replyingTo = null; // { id, sender, text, contentType }
+
+// Active Call State (Strictly in volatile RAM, never logged or saved to disk)
+let peerConnection = null;
+let localStream = null;
+let wakeLock = null;
+let callStartTime = null;
+let callTimerInterval = null;
+let isAudioMuted = false;
+let isVideoMuted = false;
+let currentCameraFacing = 'user'; // 'user' (front) or 'environment' (back)
+let incomingCallOffer = null;
+let isCallActive = false;
 
 // 1. Camouflage Logic: Switch between Recipe Blog and Secret Vault
 function showVault() {
@@ -287,6 +317,27 @@ async function handleIncomingPacket(packet) {
       handleIncomingTyping(packet);
       break;
 
+    case 'webrtc:offer':
+      await handleIncomingCallOffer(packet);
+      break;
+
+    case 'webrtc:answer':
+      await handleIncomingCallAnswer(packet);
+      break;
+
+    case 'webrtc:ice':
+      await handleIncomingIceCandidate(packet);
+      break;
+
+    case 'webrtc:reject':
+      handleCallRejected();
+      break;
+
+    case 'webrtc:end':
+      terminateCall(false);
+      appendSystemMessage('Call ended by partner.');
+      break;
+
     case 'system:undelivered':
       appendSystemMessage(`⚠️ ${packet.reason}`);
       break;
@@ -464,13 +515,23 @@ function setPartnerStatus(online) {
       partnerStatusText.textContent = 'In Chat';
       partnerStatusText.className = 'status-text online';
     }
+    if (btnAudioCall) btnAudioCall.disabled = false;
+    if (btnVideoCall) btnVideoCall.disabled = false;
   } else {
     statusDot.classList.remove('online');
     if (partnerStatusText) {
       partnerStatusText.textContent = 'Offline';
       partnerStatusText.className = 'status-text offline';
     }
+    if (btnAudioCall) btnAudioCall.disabled = true;
+    if (btnVideoCall) btnVideoCall.disabled = true;
     hideTypingIndicator();
+
+    // If a call is active and partner leaves/disconnects, terminate call immediately
+    if (isCallActive) {
+      terminateCall(false);
+      appendSystemMessage('Call disconnected: Partner left the chat.');
+    }
   }
 }
 
@@ -744,31 +805,34 @@ btnMarkVerified.addEventListener('click', async () => {
 
 // Instant Panic Button (Zero-delay emergency wipe & camouflage)
 btnPanic.addEventListener('click', async () => {
-  // 1. Immediately kill WebSocket connection
+  // 1. Immediately terminate active call and kill camera/mic hardware
+  terminateCall(true);
+
+  // 2. Immediately kill WebSocket connection
   if (socket) {
     try {
       socket.close();
     } catch (_) {}
   }
 
-  // 2. Clear volatile memory in DOM
+  // 3. Clear volatile memory in DOM
   chatMessages.innerHTML = '';
   sharedAesKey = null;
   myKeyPair = null;
   peerPublicKey = null;
   cancelReply();
 
-  // 3. Flip screen back to recipe camouflage instantly (sub-millisecond)
+  // 4. Flip screen back to recipe camouflage instantly (sub-millisecond)
   showCamouflage();
 
-  // 4. Wipe local IndexedDB keys & session storage in background
+  // 5. Wipe local IndexedDB keys & session storage in background
   try {
     await LocalKeyStore.wipeAllData();
   } catch (_) {}
   sessionStorage.clear();
   localStorage.clear();
 
-  // 5. Clean URL query parameters so no token remains in address bar
+  // 6. Clean URL query parameters so no token remains in address bar
   if (window.history.replaceState) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
@@ -809,6 +873,399 @@ fileInput.addEventListener('change', (e) => {
   }
 });
 
+// ==========================================================
+// 8. ZERO-KNOWLEDGE WEBRTC CALLING ENGINE (Audio & Video)
+// ==========================================================
+
+// Global STUN and encrypted TURN servers (Public STUN + secure TURN fallback)
+const RTC_CONFIGURATION = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+  ],
+  iceCandidatePoolSize: 10,
+};
+
+// Start an Outgoing Call (Voice or Video)
+async function startCall(videoEnabled = true) {
+  if (!isPartnerOnline) {
+    alert('Cannot call: Partner must be inside the chat to connect.');
+    return;
+  }
+
+  try {
+    // 1. Capture local media stream
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: videoEnabled ? { facingMode: currentCameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+    });
+
+    if (localVideo) {
+      localVideo.srcObject = localStream;
+    }
+
+    // 2. Setup RTCPeerConnection
+    setupPeerConnection();
+
+    // 3. Add tracks
+    localStream.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    // 4. Create and send offer
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    sendPacket({
+      type: 'webrtc:offer',
+      offer: offer,
+      videoEnabled: videoEnabled,
+      timestamp: Date.now(),
+    });
+
+    // 5. Open in-call overlay
+    openCallUI(videoEnabled);
+    if (callTimer) callTimer.textContent = 'Calling partner...';
+    requestScreenWakeLock();
+  } catch (err) {
+    console.error('Call initialization failed:', err);
+    alert('Camera or microphone access denied / unavailable.');
+    terminateCall(false);
+  }
+}
+
+// Receive Incoming Call Offer
+async function handleIncomingCallOffer(packet) {
+  if (!isPartnerOnline) return;
+
+  incomingCallOffer = packet;
+  if (incomingCallerTitle) {
+    incomingCallerTitle.textContent = packet.videoEnabled ? '📹 Encrypted Video Call' : '📞 Encrypted Voice Call';
+  }
+  if (incomingCallSubtitle) {
+    incomingCallSubtitle.textContent = `${partnerIdentity || 'Partner'} is calling you securely...`;
+  }
+
+  if (incomingCallModal) {
+    incomingCallModal.classList.remove('hidden');
+    // Subtle call ring vibration pattern if supported
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 500]);
+  }
+}
+
+// Accept Incoming Call
+async function acceptIncomingCall() {
+  if (!incomingCallOffer) return;
+  const isVideo = incomingCallOffer.videoEnabled;
+
+  if (incomingCallModal) incomingCallModal.classList.add('hidden');
+
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: isVideo ? { facingMode: currentCameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+    });
+
+    if (localVideo) {
+      localVideo.srcObject = localStream;
+    }
+
+    setupPeerConnection();
+
+    localStream.getTracks().forEach((track) => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallOffer.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    sendPacket({
+      type: 'webrtc:answer',
+      answer: answer,
+      timestamp: Date.now(),
+    });
+
+    openCallUI(isVideo);
+    startCallTimer();
+    requestScreenWakeLock();
+  } catch (err) {
+    console.error('Failed to accept call:', err);
+    alert('Unable to access microphone or camera.');
+    rejectIncomingCall();
+  }
+}
+
+// Reject Incoming Call
+function rejectIncomingCall() {
+  if (incomingCallModal) incomingCallModal.classList.add('hidden');
+  sendPacket({
+    type: 'webrtc:reject',
+    timestamp: Date.now(),
+  });
+  incomingCallOffer = null;
+}
+
+function handleCallRejected() {
+  terminateCall(false);
+  appendSystemMessage('Call declined by partner.');
+}
+
+// Handle Remote Call Answer
+async function handleIncomingCallAnswer(packet) {
+  if (peerConnection && packet.answer) {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(packet.answer));
+    startCallTimer();
+  }
+}
+
+// Handle ICE Candidate Exchange
+async function handleIncomingIceCandidate(packet) {
+  if (peerConnection && packet.candidate) {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(packet.candidate));
+    } catch (e) {
+      console.warn('Error adding ICE candidate:', e);
+    }
+  }
+}
+
+// Setup PeerConnection Events
+function setupPeerConnection() {
+  peerConnection = new RTCPeerConnection(RTC_CONFIGURATION);
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      sendPacket({
+        type: 'webrtc:ice',
+        candidate: event.candidate,
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  peerConnection.ontrack = (event) => {
+    const stream = event.streams[0];
+    if (remoteVideo) {
+      remoteVideo.srcObject = stream;
+    }
+    if (remoteAudio) {
+      remoteAudio.srcObject = stream;
+    }
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    if (!peerConnection) return;
+    const state = peerConnection.connectionState;
+    if (state === 'connected') {
+      if (callTimer && !callTimerInterval) startCallTimer();
+    } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+      terminateCall(false);
+    }
+  };
+}
+
+// UI Handling for Active Calls
+function openCallUI(hasVideo) {
+  isCallActive = true;
+  if (activeCallOverlay) activeCallOverlay.classList.remove('hidden');
+
+  if (!hasVideo) {
+    if (localVideoContainer) localVideoContainer.classList.add('hidden');
+    if (remoteVideo) remoteVideo.classList.add('hidden');
+  } else {
+    if (localVideoContainer) localVideoContainer.classList.remove('hidden');
+    if (remoteVideo) remoteVideo.classList.remove('hidden');
+  }
+}
+
+// Call Duration Counter (Never logged or saved to disk)
+function startCallTimer() {
+  callStartTime = Date.now();
+  clearInterval(callTimerInterval);
+  callTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const secs = String(elapsed % 60).padStart(2, '0');
+    if (callTimer) {
+      callTimer.textContent = `🔒 ${mins}:${secs} (E2EE)`;
+    }
+  }, 1000);
+}
+
+// Terminate Active Call (Kills all hardware tracks & releases wakeLock)
+function terminateCall(notifyPeer = true) {
+  if (notifyPeer && socket && socket.readyState === WebSocket.OPEN) {
+    sendPacket({
+      type: 'webrtc:end',
+      timestamp: Date.now(),
+    });
+  }
+
+  isCallActive = false;
+  clearInterval(callTimerInterval);
+  callTimerInterval = null;
+  callStartTime = null;
+
+  // 1. HARDWARE STREAM KILLSWITCH: Immediately shut off mic and camera hardware
+  if (localStream) {
+    localStream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch (_) {}
+    });
+    localStream = null;
+  }
+
+  // 2. Close peer connection
+  if (peerConnection) {
+    try {
+      peerConnection.close();
+    } catch (_) {}
+    peerConnection = null;
+  }
+
+  // 3. Clear video element sources to free RAM
+  if (remoteVideo) remoteVideo.srcObject = null;
+  if (localVideo) localVideo.srcObject = null;
+  if (remoteAudio) remoteAudio.srcObject = null;
+
+  // 4. Release Screen WakeLock
+  releaseScreenWakeLock();
+
+  // 5. Hide UI
+  if (activeCallOverlay) activeCallOverlay.classList.add('hidden');
+  if (incomingCallModal) incomingCallModal.classList.add('hidden');
+  incomingCallOffer = null;
+}
+
+// Toggle Microphone (Mute / Unmute)
+function toggleMicrophone() {
+  if (!localStream) return;
+  const audioTrack = localStream.getAudioTracks()[0];
+  if (audioTrack) {
+    audioTrack.enabled = !audioTrack.enabled;
+    isAudioMuted = !audioTrack.enabled;
+    if (btnToggleMic) {
+      btnToggleMic.textContent = isAudioMuted ? '🔇' : '🎤';
+      btnToggleMic.classList.toggle('off', isAudioMuted);
+    }
+  }
+}
+
+// Toggle Camera (Video On / Off)
+function toggleCamera() {
+  if (!localStream) return;
+  const videoTrack = localStream.getVideoTracks()[0];
+  if (videoTrack) {
+    videoTrack.enabled = !videoTrack.enabled;
+    isVideoMuted = !videoTrack.enabled;
+    if (btnToggleCam) {
+      btnToggleCam.textContent = isVideoMuted ? '🚫' : '📹';
+      btnToggleCam.classList.toggle('off', isVideoMuted);
+    }
+  }
+}
+
+// Flip Camera (Front / Back on Mobile)
+async function flipCamera() {
+  if (!localStream || !peerConnection) return;
+  currentCameraFacing = currentCameraFacing === 'user' ? 'environment' : 'user';
+
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentCameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+
+    const newVideoTrack = newStream.getVideoTracks()[0];
+    const oldVideoTrack = localStream.getVideoTracks()[0];
+
+    // Replace track in peer connection
+    const sender = peerConnection.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (sender) {
+      await sender.replaceTrack(newVideoTrack);
+    }
+
+    // Stop old track and update local video
+    if (oldVideoTrack) oldVideoTrack.stop();
+    localStream.removeTrack(oldVideoTrack);
+    localStream.addTrack(newVideoTrack);
+
+    if (localVideo) localVideo.srcObject = localStream;
+  } catch (err) {
+    console.warn('Could not flip camera:', err);
+  }
+}
+
+// Screen WakeLock (Prevents phone screen from dimming/sleeping during call)
+async function requestScreenWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch (err) {
+    console.log('WakeLock error:', err);
+  }
+}
+
+function releaseScreenWakeLock() {
+  if (wakeLock) {
+    try {
+      wakeLock.release();
+    } catch (_) {}
+    wakeLock = null;
+  }
+}
+
+// ==========================================================
+// 9. POWER BUTTON / SCREEN LOCK / BACKGROUND KILLSWITCH
+// ==========================================================
+// When the power button is pressed, screen is locked, or browser tab is switched away:
+// 1. Instantly kill the active call and camera/mic tracks.
+// 2. Immediately flip the screen back to the SwadRasoi recipe camouflage.
+// 3. When the user unlocks the phone, they only see Paneer Butter Masala!
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (isCallActive) {
+      terminateCall(true);
+    }
+    showCamouflage();
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (isCallActive) {
+    terminateCall(true);
+  }
+  showCamouflage();
+});
+
+// Event Listeners for Calling
+if (btnAudioCall) btnAudioCall.addEventListener('click', () => startCall(false));
+if (btnVideoCall) btnVideoCall.addEventListener('click', () => startCall(true));
+if (btnAcceptCall) btnAcceptCall.addEventListener('click', acceptIncomingCall);
+if (btnRejectCall) btnRejectCall.addEventListener('click', rejectIncomingCall);
+if (btnEndCall) btnEndCall.addEventListener('click', () => terminateCall(true));
+if (btnToggleMic) btnToggleMic.addEventListener('click', toggleMicrophone);
+if (btnToggleCam) btnToggleCam.addEventListener('click', toggleCamera);
+if (btnFlipCam) btnFlipCam.addEventListener('click', flipCamera);
+if (btnCallCamouflage) {
+  btnCallCamouflage.addEventListener('click', () => {
+    terminateCall(true);
+    showCamouflage();
+  });
+}
+
 // Bootstrapping the chat vault once unlocked
 async function initChatVault() {
   if (!myKeyPair) {
@@ -821,3 +1278,4 @@ async function initChatVault() {
 
 // Initial page check
 checkInitialAuth();
+

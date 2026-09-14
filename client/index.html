@@ -144,6 +144,9 @@
         </div>
       </div>
       <div class="header-actions">
+        <!-- Call Buttons (Disabled if partner offline) -->
+        <button id="btn-audio-call" class="btn-icon btn-call" title="Encrypted Voice Call">📞</button>
+        <button id="btn-video-call" class="btn-icon btn-call" title="Encrypted Video Call">📹</button>
         <!-- Disguise / Return to Recipe Button -->
         <button id="btn-camouflage" class="btn-icon" title="Instant Camouflage: Back to Recipes">🍛</button>
         <button id="btn-verify" class="btn-icon" title="Verify Safety Fingerprint">🔐</button>
@@ -203,6 +206,49 @@
         <button id="btn-close-viewer" class="btn-icon" style="font-size: 18px;">✕</button>
       </div>
       <img id="fullscreen-image" src="" alt="Encrypted Ephemeral Media">
+    </div>
+
+    <!-- Incoming Call Banner / Modal -->
+    <div id="incoming-call-modal" class="modal-overlay hidden">
+      <div class="modal-content call-incoming-card">
+        <div class="incoming-avatar">📞</div>
+        <h3 id="incoming-caller-title">Encrypted Call Incoming</h3>
+        <p id="incoming-call-subtitle">Partner is calling you securely...</p>
+        <div class="call-action-buttons">
+          <button id="btn-accept-call" class="btn-call-accept">Accept Call</button>
+          <button id="btn-reject-call" class="btn-call-decline">Decline</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Call Fullscreen Overlay (P2P In-Memory Video & Audio) -->
+    <div id="active-call-overlay" class="active-call-overlay hidden">
+      <!-- Remote Video (Full-screen background) -->
+      <video id="remote-video" autoplay playsinline class="remote-video-stream"></video>
+      <audio id="remote-audio" autoplay></audio>
+
+      <!-- Local Self-Preview Video (Picture-in-picture floating tile) -->
+      <div id="local-video-container" class="local-video-tile">
+        <video id="local-video" autoplay playsinline muted class="local-video-stream"></video>
+      </div>
+
+      <!-- Call Status Bar -->
+      <div class="call-status-header">
+        <div class="call-status-info">
+          <span class="call-lock-icon">🔒</span>
+          <span id="call-timer">Connected (E2EE)</span>
+        </div>
+        <!-- Emergency In-Call Camouflage -->
+        <button id="btn-call-camouflage" class="btn-icon btn-call-camouflage" title="Camouflage to Recipe">🍛</button>
+      </div>
+
+      <!-- In-Call Controls Bar -->
+      <div class="call-controls-bar">
+        <button id="btn-toggle-mic" class="call-ctrl-btn" title="Mute Microphone">🎤</button>
+        <button id="btn-toggle-cam" class="call-ctrl-btn" title="Toggle Camera">📹</button>
+        <button id="btn-flip-cam" class="call-ctrl-btn" title="Flip Camera">🔄</button>
+        <button id="btn-end-call" class="call-ctrl-btn btn-end-call" title="End Call">🛑</button>
+      </div>
     </div>
   </div>
 
