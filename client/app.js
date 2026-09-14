@@ -96,15 +96,45 @@ let isCallActive = false;
 
 // 1. Camouflage Logic: Switch between Recipe Blog and Secret Vault
 function showVault() {
-  camouflageView.classList.add('hidden');
-  appContainer.classList.remove('hidden');
+  try {
+    sessionStorage.removeItem('zk_force_camouflage');
+  } catch (_) {}
+  if (camouflageView) {
+    camouflageView.classList.add('hidden');
+    camouflageView.style.setProperty('display', 'none', 'important');
+    camouflageView.style.setProperty('opacity', '0', 'important');
+    camouflageView.style.setProperty('visibility', 'hidden', 'important');
+    camouflageView.style.setProperty('pointer-events', 'none', 'important');
+  }
+  if (appContainer) {
+    appContainer.classList.remove('hidden');
+    appContainer.style.setProperty('display', 'flex', 'important');
+    appContainer.style.setProperty('opacity', '1', 'important');
+    appContainer.style.setProperty('visibility', 'visible', 'important');
+    appContainer.style.setProperty('pointer-events', 'auto', 'important');
+  }
   document.title = 'Private Vault';
 }
 
 function showCamouflage() {
-  appContainer.classList.add('hidden');
-  camouflageView.classList.remove('hidden');
+  if (appContainer) {
+    appContainer.classList.add('hidden');
+    appContainer.style.setProperty('display', 'none', 'important');
+    appContainer.style.setProperty('opacity', '0', 'important');
+    appContainer.style.setProperty('visibility', 'hidden', 'important');
+    appContainer.style.setProperty('pointer-events', 'none', 'important');
+  }
+  if (camouflageView) {
+    camouflageView.classList.remove('hidden');
+    camouflageView.style.setProperty('display', 'block', 'important');
+    camouflageView.style.setProperty('opacity', '1', 'important');
+    camouflageView.style.setProperty('visibility', 'visible', 'important');
+    camouflageView.style.setProperty('pointer-events', 'auto', 'important');
+  }
   document.title = 'SwadRasoi - Authentic Indian Recipes';
+  if (document.body) {
+    void document.body.offsetHeight;
+  }
 }
 
 // Check if passcode matches Alice or Bob
@@ -197,24 +227,32 @@ btnCancelPin.addEventListener('click', () => {
 
 // Quick Camouflage Button in Chat Header
 btnCamouflage.addEventListener('click', () => {
-  showCamouflage();
+  lockVaultOnSleep();
 });
 
-// Auto-unlock if token is passed via URL or active session
+// Initial auth check: strictly enforce camouflage unless explicit valid URL token
 function checkInitialAuth() {
   const urlParams = new URLSearchParams(window.location.search);
   const token = urlParams.get('token');
-  const sessionToken = sessionStorage.getItem('zk_auth_token');
+  const forceCamouflage = sessionStorage.getItem('zk_force_camouflage');
+
+  if (forceCamouflage === 'true') {
+    sessionStorage.removeItem('zk_auth_token');
+    showCamouflage();
+    return;
+  }
 
   if (token && (token === TOKEN_ALICE || token === TOKEN_BOB)) {
     currentAuthToken = token;
     sessionStorage.setItem('zk_auth_token', token);
+    if (window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
     showVault();
     initChatVault();
-  } else if (sessionToken) {
-    currentAuthToken = sessionToken;
-    showVault();
-    initChatVault();
+  } else {
+    // Default strictly to recipe camouflage on load/restore
+    showCamouflage();
   }
 }
 
@@ -1231,23 +1269,78 @@ function releaseScreenWakeLock() {
 // 9. POWER BUTTON / SCREEN LOCK / BACKGROUND KILLSWITCH
 // ==========================================================
 // When the power button is pressed, screen is locked, or browser tab is switched away:
-// 1. Instantly kill the active call and camera/mic tracks.
-// 2. Immediately flip the screen back to the SwadRasoi recipe camouflage.
-// 3. When the user unlocks the phone, they only see Paneer Butter Masala!
+// 1. Instantly kill active calls and terminate camera/mic hardware streams.
+// 2. Wipe volatile session auth tokens and sensitive message DOM nodes.
+// 3. Immediately lock into SwadRasoi recipe camouflage.
+// 4. When the user unlocks the phone or wakes up the screen, ONLY Paneer Butter Masala appears!
+function lockVaultOnSleep() {
+  // 1. Instantly disconnect any active voice/video call & stop all camera/mic tracks
+  if (isCallActive) {
+    terminateCall(true);
+  }
+
+  // 2. Wipe active auth state so screen-wake never re-opens vault
+  currentAuthToken = null;
+  try {
+    sessionStorage.removeItem('zk_auth_token');
+    sessionStorage.setItem('zk_force_camouflage', 'true');
+  } catch (_) {}
+
+  // 3. Close relay WebSocket connection cleanly
+  if (socket) {
+    try {
+      socket.close();
+    } catch (_) {}
+    socket = null;
+  }
+
+  // 4. Scrub chat messages and input from DOM to eliminate render cache snapshot
+  if (chatMessages) {
+    chatMessages.innerHTML = '';
+  }
+  if (messageInput) {
+    messageInput.value = '';
+  }
+  replyingTo = null;
+  if (replyPreviewBar) {
+    replyPreviewBar.classList.add('hidden');
+  }
+
+  // 5. Instantly force recipe camouflage
+  showCamouflage();
+}
+
+// Listen for screen-off, power button press, and sleep
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (isCallActive) {
-      terminateCall(true);
+    lockVaultOnSleep();
+  } else {
+    // Phone just woke up from sleep or screen was turned back on!
+    // Unless actively unlocked with token in memory, enforce recipe camouflage
+    if (!currentAuthToken || !sessionStorage.getItem('zk_auth_token')) {
+      lockVaultOnSleep();
     }
-    showCamouflage();
   }
 });
 
 window.addEventListener('pagehide', () => {
-  if (isCallActive) {
-    terminateCall(true);
+  lockVaultOnSleep();
+});
+
+window.addEventListener('freeze', () => {
+  lockVaultOnSleep();
+});
+
+window.addEventListener('pageshow', () => {
+  if (!currentAuthToken || !sessionStorage.getItem('zk_auth_token')) {
+    lockVaultOnSleep();
   }
-  showCamouflage();
+});
+
+window.addEventListener('focus', () => {
+  if (!currentAuthToken || !sessionStorage.getItem('zk_auth_token')) {
+    lockVaultOnSleep();
+  }
 });
 
 // Event Listeners for Calling

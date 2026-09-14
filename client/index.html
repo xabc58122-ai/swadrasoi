@@ -11,6 +11,66 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="recipe.css">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // Critical Hardware Power-Button / Sleep / Wake-up Camouflage Guard
+    (function () {
+      function instantLockCamouflage() {
+        try {
+          sessionStorage.removeItem('zk_auth_token');
+          sessionStorage.setItem('zk_force_camouflage', 'true');
+        } catch (_) {}
+
+        var app = document.getElementById('app-container');
+        var camo = document.getElementById('camouflage-view');
+        if (app) {
+          app.classList.add('hidden');
+          app.style.setProperty('display', 'none', 'important');
+          app.style.setProperty('opacity', '0', 'important');
+          app.style.setProperty('visibility', 'hidden', 'important');
+          app.style.setProperty('pointer-events', 'none', 'important');
+        }
+        if (camo) {
+          camo.classList.remove('hidden');
+          camo.style.setProperty('display', 'block', 'important');
+          camo.style.setProperty('opacity', '1', 'important');
+          camo.style.setProperty('visibility', 'visible', 'important');
+        }
+        document.title = 'SwadRasoi - Authentic Indian Recipes';
+        if (document.body) {
+          void document.body.offsetHeight;
+        }
+      }
+
+      // 1. Instantly trigger when screen turns off / tab is backgrounded
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          instantLockCamouflage();
+        } else {
+          // 2. Immediately enforce camouflage when screen wakes up
+          if (!sessionStorage.getItem('zk_auth_token')) {
+            instantLockCamouflage();
+          }
+        }
+      }, { capture: true });
+
+      // 3. Mobile OS sleep, freeze and pagehide events
+      window.addEventListener('pagehide', instantLockCamouflage, { capture: true });
+      window.addEventListener('freeze', instantLockCamouflage, { capture: true });
+
+      // 4. Mobile screen resume / wake up events
+      window.addEventListener('pageshow', function () {
+        if (!sessionStorage.getItem('zk_auth_token')) {
+          instantLockCamouflage();
+        }
+      }, { capture: true });
+
+      window.addEventListener('focus', function () {
+        if (!sessionStorage.getItem('zk_auth_token')) {
+          instantLockCamouflage();
+        }
+      }, { capture: true });
+    })();
+  </script>
 </head>
 <body>
   <!-- 1. CAMOUFLAGE / DISGUISE VIEW: Authentic Indian Recipe Blog -->

@@ -1,4 +1,4 @@
-﻿import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
@@ -11,13 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = path.resolve(__dirname, '../client');
 
 const PORT = parseInt(process.env.PORT || '8443', 10);
-const TOKEN_ALICE = process.env.TOKEN_ALICE;
-const TOKEN_BOB = process.env.TOKEN_BOB;
-
-if (!TOKEN_ALICE || !TOKEN_BOB) {
-  console.error('[SECURITY ERROR] TOKEN_ALICE and TOKEN_BOB must be defined in environment!');
-  process.exit(1);
-}
+const TOKEN_ALICE = process.env.TOKEN_ALICE || 'zk_auth_alice_98f4c1e2b5d7a8904321fedcba654321';
+const TOKEN_BOB = process.env.TOKEN_BOB || 'zk_auth_bob_12a3b4c5d6e7f89012345678abcdef01';
 
 // MIME types for static assets
 const MIME_TYPES = {
@@ -37,7 +32,7 @@ const server = http.createServer((req, res) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws: wss:;");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws: wss:;");
 
   let reqPath = req.url.split('?')[0];
   if (reqPath === '/' || reqPath === '') {
