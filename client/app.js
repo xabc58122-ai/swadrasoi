@@ -42,6 +42,10 @@ const cryptoBadge = document.getElementById('crypto-badge');
 const badgeIcon = document.getElementById('badge-icon');
 const badgeText = document.getElementById('badge-text');
 const typingIndicator = document.getElementById('typing-indicator');
+const replyPreviewBar = document.getElementById('reply-preview-bar');
+const replyBarSender = document.getElementById('reply-bar-sender');
+const replyBarText = document.getElementById('reply-bar-text');
+const btnCancelReply = document.getElementById('btn-cancel-reply');
 const chatMessages = document.getElementById('chat-messages');
 const messageInput = document.getElementById('message-input');
 const btnSend = document.getElementById('btn-send');
@@ -56,6 +60,9 @@ const btnCloseVerify = document.getElementById('btn-close-verify');
 const imageViewerModal = document.getElementById('image-viewer-modal');
 const fullscreenImage = document.getElementById('fullscreen-image');
 const btnCloseViewer = document.getElementById('btn-close-viewer');
+
+// Active Reply State
+let replyingTo = null; // { id, sender, text, contentType }
 
 // 1. Camouflage Logic: Switch between Recipe Blog and Secret Vault
 function showVault() {
@@ -313,11 +320,23 @@ async function sendMessage() {
     return;
   }
 
-  const textBytes = new TextEncoder().encode(text);
-  const encrypted = await E2EECrypto.encrypt(sharedAesKey, textBytes);
+  const payload = {
+    text: text,
+    replyTo: replyingTo ? {
+      id: replyingTo.id,
+      sender: replyingTo.sender,
+      text: replyingTo.text,
+      contentType: replyingTo.contentType,
+    } : null,
+  };
+
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const encrypted = await E2EECrypto.encrypt(sharedAesKey, payloadBytes);
+  const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
   sendPacket({
     type: 'e2ee:message',
+    id: msgId,
     contentType: 'text',
     iv: encrypted.iv,
     ciphertext: encrypted.ciphertext,
@@ -325,13 +344,16 @@ async function sendMessage() {
   });
 
   appendMessageBubble({
+    id: msgId,
     sender: 'mine',
     contentType: 'text',
     content: text,
+    replyTo: payload.replyTo,
     timestamp: Date.now(),
   });
 
   messageInput.value = '';
+  cancelReply();
 }
 
 async function sendImage(file) {
@@ -343,13 +365,21 @@ async function sendImage(file) {
   appendSystemMessage('Encrypting media locally...');
   const arrayBuffer = await file.arrayBuffer();
   const encrypted = await E2EECrypto.encrypt(sharedAesKey, arrayBuffer);
+  const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
 
   sendPacket({
     type: 'e2ee:message',
+    id: msgId,
     contentType: 'image',
     mimeType: file.type || 'image/jpeg',
     iv: encrypted.iv,
     ciphertext: encrypted.ciphertext,
+    replyTo: replyingTo ? {
+      id: replyingTo.id,
+      sender: replyingTo.sender,
+      text: replyingTo.text,
+      contentType: replyingTo.contentType,
+    } : null,
     timestamp: Date.now(),
   });
 
@@ -357,11 +387,15 @@ async function sendImage(file) {
   const objectUrl = URL.createObjectURL(localBlob);
 
   appendMessageBubble({
+    id: msgId,
     sender: 'mine',
     contentType: 'image',
     objectUrl: objectUrl,
+    replyTo: replyingTo,
     timestamp: Date.now(),
   });
+
+  cancelReply();
 }
 
 async function handleIncomingEncryptedMessage(packet) {
@@ -374,11 +408,24 @@ async function handleIncomingEncryptedMessage(packet) {
     const decryptedBytes = await E2EECrypto.decrypt(sharedAesKey, packet.ciphertext, packet.iv);
 
     if (packet.contentType === 'text') {
-      const text = new TextDecoder().decode(decryptedBytes);
+      let textContent = '';
+      let replyTo = null;
+
+      try {
+        const parsed = JSON.parse(new TextDecoder().decode(decryptedBytes));
+        textContent = parsed.text || '';
+        replyTo = parsed.replyTo || null;
+      } catch (_) {
+        // Fallback for raw text payloads
+        textContent = new TextDecoder().decode(decryptedBytes);
+      }
+
       appendMessageBubble({
+        id: packet.id || ('msg_' + Date.now()),
         sender: 'peer',
         contentType: 'text',
-        content: text,
+        content: textContent,
+        replyTo: replyTo || packet.replyTo,
         timestamp: packet.timestamp,
       });
     } else if (packet.contentType === 'image') {
@@ -386,9 +433,11 @@ async function handleIncomingEncryptedMessage(packet) {
       const objectUrl = URL.createObjectURL(blob);
 
       appendMessageBubble({
+        id: packet.id || ('msg_' + Date.now()),
         sender: 'peer',
         contentType: 'image',
         objectUrl: objectUrl,
+        replyTo: packet.replyTo || null,
         timestamp: packet.timestamp,
       });
     }
@@ -481,12 +530,77 @@ function appendSystemMessage(msg) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-function appendMessageBubble({ sender, contentType, content, objectUrl, timestamp }) {
+function initiateReply(msgData) {
+  replyingTo = {
+    id: msgData.id,
+    sender: msgData.sender === 'mine' ? 'You' : (partnerIdentity || 'Partner'),
+    text: msgData.contentType === 'image' ? '📷 Photo' : (msgData.content || ''),
+    contentType: msgData.contentType,
+  };
+
+  if (replyPreviewBar && replyBarSender && replyBarText) {
+    replyBarSender.textContent = `Replying to ${replyingTo.sender}`;
+    replyBarText.textContent = replyingTo.text;
+    replyPreviewBar.classList.remove('hidden');
+    messageInput.focus();
+  }
+}
+
+function cancelReply() {
+  replyingTo = null;
+  if (replyPreviewBar) {
+    replyPreviewBar.classList.add('hidden');
+  }
+}
+
+if (btnCancelReply) {
+  btnCancelReply.addEventListener('click', cancelReply);
+}
+
+function appendMessageBubble({ id, sender, contentType, content, objectUrl, replyTo, timestamp }) {
   const bubble = document.createElement('div');
+  const bubbleId = id || ('bubble_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
+  bubble.id = bubbleId;
   bubble.className = `message-bubble ${sender}`;
 
   const timeStr = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+  // 1. If this message is a reply to another message, render quote box
+  if (replyTo && replyTo.text) {
+    const quoteBox = document.createElement('div');
+    quoteBox.className = 'replied-quote-box';
+    quoteBox.title = 'Click to view original message';
+
+    const quoteSender = document.createElement('div');
+    quoteSender.className = 'replied-sender';
+    quoteSender.textContent = replyTo.sender || 'Partner';
+
+    const quoteSnippet = document.createElement('div');
+    quoteSnippet.className = 'replied-snippet';
+    quoteSnippet.textContent = replyTo.text;
+
+    quoteBox.appendChild(quoteSender);
+    quoteBox.appendChild(quoteSnippet);
+
+    if (replyTo.id) {
+      quoteBox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetEl = document.getElementById(replyTo.id);
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetEl.style.transition = 'box-shadow 0.3s';
+          targetEl.style.boxShadow = '0 0 15px var(--accent-blue)';
+          setTimeout(() => {
+            targetEl.style.boxShadow = '';
+          }, 1200);
+        }
+      });
+    }
+
+    bubble.appendChild(quoteBox);
+  }
+
+  // 2. Render Main Message Content
   if (contentType === 'text') {
     const textNode = document.createElement('div');
     textNode.textContent = content;
@@ -513,6 +627,75 @@ function appendMessageBubble({ sender, contentType, content, objectUrl, timestam
     bubble.appendChild(imgContainer);
   }
 
+  // 3. Quick Action Buttons (Reply button on hover/click)
+  const actionContainer = document.createElement('div');
+  actionContainer.className = 'bubble-actions';
+
+  const btnReply = document.createElement('button');
+  btnReply.className = 'btn-bubble-reply';
+  btnReply.innerHTML = '↩ Reply';
+  btnReply.title = 'Reply to this message';
+  btnReply.addEventListener('click', (e) => {
+    e.stopPropagation();
+    initReply({
+      id: bubbleId,
+      sender: sender,
+      contentType: contentType,
+      content: content,
+    });
+  });
+
+  actionContainer.appendChild(btnReply);
+  bubble.appendChild(actionContainer);
+
+  // 4. Mobile Swipe-to-Reply Gesture Handling
+  let touchStartX = 0;
+  let touchCurrentX = 0;
+  bubble.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchCurrentX = touchStartX;
+  }, { passive: true });
+
+  bubble.addEventListener('touchmove', (e) => {
+    touchCurrentX = e.touches[0].clientX;
+    const diffX = touchCurrentX - touchStartX;
+    if (diffX > 15 && diffX < 80) {
+      bubble.style.transform = `translateX(${diffX}px)`;
+    }
+  }, { passive: true });
+
+  bubble.addEventListener('touchend', () => {
+    const diffX = touchCurrentX - touchStartX;
+    bubble.style.transform = '';
+    if (diffX > 45) {
+      // Trigger reply on swipe right
+      initReply({
+        id: bubbleId,
+        sender: sender,
+        contentType: contentType,
+        content: content,
+      });
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+  });
+
+  // Double tap to reply on touch devices
+  let lastTap = 0;
+  bubble.addEventListener('touchend', (e) => {
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTap;
+    if (tapLength < 300 && tapLength > 0) {
+      initReply({
+        id: bubbleId,
+        sender: sender,
+        contentType: contentType,
+        content: content,
+      });
+      if (navigator.vibrate) navigator.vibrate(25);
+    }
+    lastTap = currentTime;
+  });
+
   const meta = document.createElement('div');
   meta.className = 'msg-meta';
   meta.innerHTML = `<span>${timeStr}</span> <span>🔒</span>`;
@@ -520,6 +703,11 @@ function appendMessageBubble({ sender, contentType, content, objectUrl, timestam
 
   chatMessages.appendChild(bubble);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Wrapper to standardise reply invocation
+function initReply(data) {
+  initiateReply(data);
 }
 
 function openFullscreenViewer(url) {
@@ -568,6 +756,7 @@ btnPanic.addEventListener('click', async () => {
   sharedAesKey = null;
   myKeyPair = null;
   peerPublicKey = null;
+  cancelReply();
 
   // 3. Flip screen back to recipe camouflage instantly (sub-millisecond)
   showCamouflage();
