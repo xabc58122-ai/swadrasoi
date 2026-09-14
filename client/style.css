@@ -307,6 +307,192 @@ header {
   color: var(--accent-blue);
 }
 
+.btn-bubble-react {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
+}
+
+.btn-bubble-react:hover {
+  transform: scale(1.2);
+}
+
+/* WhatsApp-Style Message Reaction Badge (Matches Bottom Pill) */
+.message-bubble.has-reactions {
+  margin-bottom: 14px;
+}
+
+.message-reaction-badge {
+  position: absolute;
+  bottom: -11px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  user-select: none;
+  z-index: 4;
+  animation: reactionBadgePop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.15s ease;
+}
+
+.message-bubble.mine .message-reaction-badge {
+  right: 10px;
+}
+
+.message-bubble.peer .message-reaction-badge {
+  left: 10px;
+}
+
+.message-reaction-badge:hover {
+  transform: scale(1.08);
+}
+
+.message-reaction-badge.my-reaction {
+  background: #1e3a8a;
+  border-color: #3b82f6;
+}
+
+.reaction-emojis {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cbd5e1;
+  line-height: 1;
+  margin-left: 1px;
+}
+
+.message-reaction-badge.my-reaction .reaction-count {
+  color: #bfdbfe;
+}
+
+@keyframes reactionBadgePop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Floating WhatsApp-Style Emoji Picker Bar */
+.floating-reaction-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: transparent;
+}
+
+.floating-reaction-bar {
+  position: fixed;
+  z-index: 1000;
+  background: rgba(19, 27, 46, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 28px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  animation: reactionPickerPop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes reactionPickerPop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.reaction-emoji-btn {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaction-emoji-btn:hover,
+.reaction-emoji-btn:active {
+  transform: scale(1.35) translateY(-4px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.reaction-emoji-btn.active-choice {
+  background: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+}
+
+.reaction-more-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  margin-left: 2px;
+}
+
+.reaction-more-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+/* Expanded Emoji Palette Drawer */
+.expanded-emoji-drawer {
+  position: fixed;
+  z-index: 1000;
+  background: rgba(19, 27, 46, 0.98);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
+  animation: reactionPickerPop 0.18s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 .msg-meta {
   display: flex;
   justify-content: flex-end;

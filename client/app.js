@@ -82,6 +82,12 @@ const btnCallCamouflage = document.getElementById('btn-call-camouflage');
 // Active Reply State
 let replyingTo = null; // { id, sender, text, contentType }
 
+// Active Message Reactions State (Strictly volatile in RAM)
+const reactionsByMessage = {}; // { [messageId]: { [userId]: emoji } }
+const QUICK_REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const EXPANDED_REACTION_EMOJIS = ['🔥', '🥰', '😘', '🥺', '👀', '💯', '✨', '🎉', '💋', '🌹', '😍', '🤤'];
+let activeReactionPicker = null;
+
 // Active Call State (Strictly in volatile RAM, never logged or saved to disk)
 let peerConnection = null;
 let localStream = null;
@@ -349,6 +355,10 @@ async function handleIncomingPacket(packet) {
     case 'e2ee:message':
       hideTypingIndicator();
       await handleIncomingEncryptedMessage(packet);
+      break;
+
+    case 'e2ee:reaction':
+      await handleIncomingReaction(packet);
       break;
 
     case 'e2ee:typing':
@@ -727,8 +737,18 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
   }
 
   // 3. Quick Action Buttons (Reply button on hover/click)
+  // 3. Quick Action Buttons (Reply + React buttons on hover/click)
   const actionContainer = document.createElement('div');
   actionContainer.className = 'bubble-actions';
+
+  const btnReact = document.createElement('button');
+  btnReact.className = 'btn-bubble-react';
+  btnReact.innerHTML = '😊';
+  btnReact.title = 'React with emoji';
+  btnReact.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openReactionPicker(bubble, bubbleId);
+  });
 
   const btnReply = document.createElement('button');
   btnReply.className = 'btn-bubble-reply';
@@ -744,19 +764,43 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
     });
   });
 
+  actionContainer.appendChild(btnReact);
   actionContainer.appendChild(btnReply);
   bubble.appendChild(actionContainer);
 
-  // 4. Mobile Swipe-to-Reply Gesture Handling
+  // Desktop right-click / context menu opens reaction bar
+  bubble.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    openReactionPicker(bubble, bubbleId);
+  });
+
+  // 4. Mobile Gestures: Long-Press to React & Swipe-to-Reply
   let touchStartX = 0;
+  let touchStartY = 0;
   let touchCurrentX = 0;
+  let longPressTimer = null;
+  let isLongPressTriggered = false;
+  let lastTap = 0;
+
   bubble.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
     touchCurrentX = touchStartX;
+    isLongPressTriggered = false;
+
+    longPressTimer = setTimeout(() => {
+      isLongPressTriggered = true;
+      openReactionPicker(bubble, bubbleId);
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 400);
   }, { passive: true });
 
   bubble.addEventListener('touchmove', (e) => {
     touchCurrentX = e.touches[0].clientX;
+    const currentY = e.touches[0].clientY;
+    if (Math.abs(touchCurrentX - touchStartX) > 10 || Math.abs(currentY - touchStartY) > 10) {
+      clearTimeout(longPressTimer);
+    }
     const diffX = touchCurrentX - touchStartX;
     if (diffX > 15 && diffX < 80) {
       bubble.style.transform = `translateX(${diffX}px)`;
@@ -764,8 +808,14 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
   }, { passive: true });
 
   bubble.addEventListener('touchend', () => {
+    clearTimeout(longPressTimer);
     const diffX = touchCurrentX - touchStartX;
     bubble.style.transform = '';
+
+    if (isLongPressTriggered) {
+      return;
+    }
+
     if (diffX > 45) {
       // Trigger reply on swipe right
       initReply({
@@ -775,12 +825,10 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
         content: content,
       });
       if (navigator.vibrate) navigator.vibrate(20);
+      return;
     }
-  });
 
-  // Double tap to reply on touch devices
-  let lastTap = 0;
-  bubble.addEventListener('touchend', (e) => {
+    // Double tap to reply on touch devices
     const currentTime = new Date().getTime();
     const tapLength = currentTime - lastTap;
     if (tapLength < 300 && tapLength > 0) {
@@ -800,6 +848,9 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
   meta.innerHTML = `<span>${timeStr}</span> <span>🔒</span>`;
   bubble.appendChild(meta);
 
+  // Render any active reactions for this bubble
+  updateReactionBadgeInDOM(bubbleId, bubble);
+
   chatMessages.appendChild(bubble);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -807,6 +858,238 @@ function appendMessageBubble({ id, sender, contentType, content, objectUrl, repl
 // Wrapper to standardise reply invocation
 function initReply(data) {
   initiateReply(data);
+}
+
+// ==========================================================
+// 7B. WHATSAPP-STYLE E2EE EMOJI REACTION SYSTEM
+// ==========================================================
+
+function closeReactionPicker() {
+  if (activeReactionPicker) {
+    activeReactionPicker.remove();
+    activeReactionPicker = null;
+  }
+  const backdrop = document.querySelector('.floating-reaction-backdrop');
+  if (backdrop) backdrop.remove();
+  const drawer = document.querySelector('.expanded-emoji-drawer');
+  if (drawer) drawer.remove();
+}
+
+function openReactionPicker(bubbleElement, messageId) {
+  closeReactionPicker();
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'floating-reaction-backdrop';
+  backdrop.addEventListener('click', closeReactionPicker);
+  document.body.appendChild(backdrop);
+
+  const picker = document.createElement('div');
+  picker.className = 'floating-reaction-bar';
+
+  const myCurrentReaction = reactionsByMessage[messageId]?.[myIdentity];
+
+  QUICK_REACTION_EMOJIS.forEach((emoji) => {
+    const btn = document.createElement('button');
+    btn.className = 'reaction-emoji-btn';
+    if (myCurrentReaction === emoji) {
+      btn.classList.add('active-choice');
+    }
+    btn.textContent = emoji;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReaction(messageId, emoji);
+      closeReactionPicker();
+    });
+    picker.appendChild(btn);
+  });
+
+  const moreBtn = document.createElement('button');
+  moreBtn.className = 'reaction-more-btn';
+  moreBtn.textContent = '➕';
+  moreBtn.title = 'More emojis';
+  moreBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openExpandedDrawer(picker, messageId);
+  });
+  picker.appendChild(moreBtn);
+
+  document.body.appendChild(picker);
+  activeReactionPicker = picker;
+
+  // Position floating bar directly above or below message bubble
+  const rect = bubbleElement.getBoundingClientRect();
+  const pickerRect = picker.getBoundingClientRect();
+  let top = rect.top - pickerRect.height - 10;
+  if (top < 50) {
+    top = rect.bottom + 10;
+  }
+
+  let left = rect.left + (rect.width / 2) - (pickerRect.width / 2);
+  left = Math.max(12, Math.min(window.innerWidth - pickerRect.width - 12, left));
+
+  picker.style.top = `${top}px`;
+  picker.style.left = `${left}px`;
+}
+
+function openExpandedDrawer(anchorPicker, messageId) {
+  const existingDrawer = document.querySelector('.expanded-emoji-drawer');
+  if (existingDrawer) {
+    existingDrawer.remove();
+    return;
+  }
+
+  const drawer = document.createElement('div');
+  drawer.className = 'expanded-emoji-drawer';
+
+  const myCurrentReaction = reactionsByMessage[messageId]?.[myIdentity];
+
+  EXPANDED_REACTION_EMOJIS.forEach((emoji) => {
+    const btn = document.createElement('button');
+    btn.className = 'reaction-emoji-btn';
+    if (myCurrentReaction === emoji) {
+      btn.classList.add('active-choice');
+    }
+    btn.textContent = emoji;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReaction(messageId, emoji);
+      closeReactionPicker();
+    });
+    drawer.appendChild(btn);
+  });
+
+  document.body.appendChild(drawer);
+
+  const anchorRect = anchorPicker.getBoundingClientRect();
+  const drawerRect = drawer.getBoundingClientRect();
+  let top = anchorRect.top - drawerRect.height - 8;
+  if (top < 50) {
+    top = anchorRect.bottom + 8;
+  }
+
+  let left = anchorRect.left + (anchorRect.width / 2) - (drawerRect.width / 2);
+  left = Math.max(12, Math.min(window.innerWidth - drawerRect.width - 12, left));
+
+  drawer.style.top = `${top}px`;
+  drawer.style.left = `${left}px`;
+}
+
+async function toggleReaction(messageId, emoji) {
+  if (!reactionsByMessage[messageId]) {
+    reactionsByMessage[messageId] = {};
+  }
+
+  const current = reactionsByMessage[messageId][myIdentity];
+  let action = 'set';
+  if (current === emoji) {
+    action = 'remove';
+    delete reactionsByMessage[messageId][myIdentity];
+  } else {
+    reactionsByMessage[messageId][myIdentity] = emoji;
+  }
+
+  updateReactionBadgeInDOM(messageId);
+  if (navigator.vibrate) navigator.vibrate(15);
+
+  await sendReactionPacket(messageId, emoji, action);
+}
+
+async function sendReactionPacket(messageId, emoji, action) {
+  if (!sharedAesKey || !socket || socket.readyState !== WebSocket.OPEN) return;
+
+  const reactionData = {
+    messageId: messageId,
+    emoji: emoji,
+    action: action,
+    sender: myIdentity,
+    timestamp: Date.now(),
+  };
+
+  const payloadBytes = new TextEncoder().encode(JSON.stringify(reactionData));
+  const encrypted = await E2EECrypto.encrypt(sharedAesKey, payloadBytes);
+
+  sendPacket({
+    type: 'e2ee:reaction',
+    iv: encrypted.iv,
+    ciphertext: encrypted.ciphertext,
+    timestamp: Date.now(),
+  });
+}
+
+async function handleIncomingReaction(packet) {
+  if (!sharedAesKey) return;
+
+  try {
+    const decryptedBytes = await E2EECrypto.decrypt(sharedAesKey, packet.ciphertext, packet.iv);
+    const reactionData = JSON.parse(new TextDecoder().decode(decryptedBytes));
+    const { messageId, emoji, action, sender } = reactionData;
+
+    if (!reactionsByMessage[messageId]) {
+      reactionsByMessage[messageId] = {};
+    }
+
+    if (action === 'remove') {
+      delete reactionsByMessage[messageId][sender];
+    } else {
+      reactionsByMessage[messageId][sender] = emoji;
+    }
+
+    updateReactionBadgeInDOM(messageId);
+    if (navigator.vibrate) navigator.vibrate(15);
+  } catch (err) {
+    console.warn('Failed to decrypt reaction packet:', err);
+  }
+}
+
+function updateReactionBadgeInDOM(messageId, bubbleElement = null) {
+  const bubble = bubbleElement || document.getElementById(messageId);
+  if (!bubble) return;
+
+  const reacts = reactionsByMessage[messageId] || {};
+  const entries = Object.entries(reacts); // [ [sender, emoji], ... ]
+
+  let badge = bubble.querySelector('.message-reaction-badge');
+
+  if (entries.length === 0) {
+    if (badge) badge.remove();
+    bubble.classList.remove('has-reactions');
+    return;
+  }
+
+  bubble.classList.add('has-reactions');
+
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'message-reaction-badge';
+    badge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const myReaction = reacts[myIdentity];
+      if (myReaction) {
+        toggleReaction(messageId, myReaction);
+      } else {
+        openReactionPicker(bubble, messageId);
+      }
+    });
+    bubble.appendChild(badge);
+  }
+
+  const myReaction = reacts[myIdentity];
+  if (myReaction) {
+    badge.classList.add('my-reaction');
+    badge.title = `You reacted ${myReaction}. Tap to remove.`;
+  } else {
+    badge.classList.remove('my-reaction');
+    badge.title = 'Tap to react';
+  }
+
+  const emojisList = entries.map(([_, em]) => em);
+  const uniqueEmojis = [...new Set(emojisList)];
+  const totalCount = entries.length;
+
+  const emojisSpan = `<span class="reaction-emojis">${uniqueEmojis.join(' ')}</span>`;
+  const countSpan = totalCount > 1 ? `<span class="reaction-count">${totalCount}</span>` : '';
+
+  badge.innerHTML = `${emojisSpan}${countSpan}`;
 }
 
 function openFullscreenViewer(url) {
@@ -853,8 +1136,10 @@ btnPanic.addEventListener('click', async () => {
     } catch (_) {}
   }
 
-  // 3. Clear volatile memory in DOM
+  // 3. Clear volatile memory in DOM & RAM
   chatMessages.innerHTML = '';
+  for (const k in reactionsByMessage) delete reactionsByMessage[k];
+  closeReactionPicker();
   sharedAesKey = null;
   myKeyPair = null;
   peerPublicKey = null;
@@ -1294,13 +1579,15 @@ function lockVaultOnSleep() {
     socket = null;
   }
 
-  // 4. Scrub chat messages and input from DOM to eliminate render cache snapshot
+  // 4. Scrub chat messages, reactions and input from DOM & RAM
   if (chatMessages) {
     chatMessages.innerHTML = '';
   }
   if (messageInput) {
     messageInput.value = '';
   }
+  for (const k in reactionsByMessage) delete reactionsByMessage[k];
+  closeReactionPicker();
   replyingTo = null;
   if (replyPreviewBar) {
     replyPreviewBar.classList.add('hidden');
